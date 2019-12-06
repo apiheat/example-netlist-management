@@ -1,0 +1,50 @@
+image: docker.pkg.github.com/apiheat/akamai-cli-netlist/akamai-cli-netlist:v6.0.4
+
+variables:
+  AKAMAI_EDGERC_SECTION: default
+  AKAMAI_EDGERC_CONFIG: /cli/.edgerc
+  NOTIFY: noreply@akamai
+
+stages:
+  - updates
+  - synchronization
+  - activate
+
+before_script:
+  - apk add --no-cache git
+  - echo ${AKAMAI_EDGERC} | base64 -d > ${AKAMAI_EDGERC_CONFIG}
+
+diff:
+  stage: updates
+  script:
+    - echo "/usr/bin/git diff-tree --no-commit-id --name-only -r ${CI_COMMIT_SHA}"
+    - echo Checking Items in Akamai version
+    - /usr/bin/git diff-tree --no-commit-id --name-only -r ${CI_COMMIT_SHA} | grep -v README.md | grep -v .gitlab-ci.yml | tr -d 'lists/' | xargs -I % sh -c "echo akamai version %; akamai netlist get by-id --id % --includeElements | jq -r 'if .list == null then .list |= [] else . end | .list | .[]' | sort -nr" || true
+    - echo Checking Items in Local version
+    - /usr/bin/git diff-tree --no-commit-id --name-only -r ${CI_COMMIT_SHA} | grep -v README.md | grep -v .gitlab-ci.yml | xargs -I % sh -c "echo local version %; cat ${CI_PROJECT_DIR}/% | sort -nr" || true
+    - /usr/bin/git diff-tree --no-commit-id --name-only -r ${CI_COMMIT_SHA} | grep -v README.md | grep -v .gitlab-ci.yml | tr -d 'lists/' | xargs -I % sh -c "echo Changes is % can affect following; cat ${CI_PROJECT_DIR}/metadata/%.metadata | jq" || true
+
+sync:
+  stage: synchronization
+  only:
+    - master
+  script:
+    - ls -1 ${CI_PROJECT_DIR}/lists
+    - ls -1 ${CI_PROJECT_DIR}/lists | xargs -I % sh -c "echo %; akamai netlist sync local --from-file ${CI_PROJECT_DIR}/lists/% --id-dst % --force"
+
+staging:
+  stage: activate
+  only:
+    - master
+  script:
+    - echo Activating in Akamai Staging Network
+    - ls -1 ${CI_PROJECT_DIR}/lists | xargs -I % sh -c "echo %; akamai netlist activate list --id % --notificationRecipients ${NOTIFY}"
+
+production:
+  stage: activate
+  when: manual
+  only:
+    - master
+  script:
+    - echo Activating in Akamai Production Network
+    - ls -1 ${CI_PROJECT_DIR}/lists | xargs -I % sh -c "echo %; akamai netlist activate list --id % --notificationRecipients ${NOTIFY} --prd"
