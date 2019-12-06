@@ -12,7 +12,7 @@ stages:
 
 before_script:
   - apk add --no-cache git
-  - echo ${AKAMAI_EDGERC} | base64 -d > ${AKAMAI_EDGERC_CONFIG}
+  - echo ${AKAMAI_EDGE_CREDENTIALS} | base64 -d > ${AKAMAI_EDGERC_CONFIG}
 
 diff:
   stage: updates
